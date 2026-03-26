@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from backend.app.services.chat import create_chat, chat, get_chat_history
+from app.services.chat import create_chat, chat, get_chat_history
 
 router = APIRouter()
 

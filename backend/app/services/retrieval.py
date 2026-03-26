@@ -3,7 +3,7 @@
 import os
 from openai import OpenAI
 
-from backend.app.models.database import async_session
+from app.models.database import async_session
 from sqlalchemy import text, bindparam
 from sqlalchemy.types import UserDefinedType
 

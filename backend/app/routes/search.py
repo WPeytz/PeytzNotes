@@ -2,8 +2,8 @@
 
 from uuid import UUID
 from fastapi import APIRouter, Query
-from backend.app.services.retrieval import search_chunks
-from backend.app.models.database import async_session
+from app.services.retrieval import search_chunks
+from app.models.database import async_session
 from sqlalchemy import text
 
 router = APIRouter()

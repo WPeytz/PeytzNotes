@@ -3,8 +3,8 @@
 import re
 from collections import defaultdict
 from fastapi import APIRouter, Query
-from backend.app.services.chat import generate_exam_summary, generate_flashcards
-from backend.app.models.database import async_session
+from app.services.chat import generate_exam_summary, generate_flashcards
+from app.models.database import async_session
 from sqlalchemy import text
 
 router = APIRouter()
