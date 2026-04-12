@@ -44,12 +44,19 @@ async def get_note(note_id: UUID):
 
 
 @router.get("/notes")
-async def list_notes():
+async def list_notes(
+    course: str | None = Query(None, description="Filter by course name"),
+):
     """List all notes with id, title, course, source_path (no content)."""
+    if course:
+        sql = text("SELECT id, title, course, source_path FROM notes WHERE course = :course ORDER BY created_at DESC")
+        params = {"course": course}
+    else:
+        sql = text("SELECT id, title, course, source_path FROM notes ORDER BY source_path")
+        params = {}
+
     async with async_session() as session:
-        result = await session.execute(
-            text("SELECT id, title, course, source_path FROM notes ORDER BY source_path")
-        )
+        result = await session.execute(sql, params)
         rows = result.mappings().all()
 
     return {

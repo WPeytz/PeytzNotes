@@ -127,3 +127,50 @@ export async function getFlashcards(
   if (!res.ok) throw new Error("Failed to generate flashcards");
   return res.json();
 }
+
+// --- Upload ---
+
+export interface UploadResult {
+  note_id: string;
+  title: string;
+  course: string;
+  chunks: number;
+  message: string;
+}
+
+export async function uploadFile(
+  file: File,
+  course: string
+): Promise<UploadResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("course", course);
+
+  const res = await fetch(`${API_BASE}/upload`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Upload failed" }));
+    throw new Error(err.detail || "Upload failed");
+  }
+  return res.json();
+}
+
+export async function deleteNote(noteId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/notes/${noteId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to delete note");
+}
+
+export async function listCourseNotes(
+  course: string
+): Promise<NoteSummary[]> {
+  const res = await fetch(
+    `${API_BASE}/notes?course=${encodeURIComponent(course)}`
+  );
+  if (!res.ok) throw new Error("Failed to fetch notes");
+  const data = await res.json();
+  return data.notes;
+}

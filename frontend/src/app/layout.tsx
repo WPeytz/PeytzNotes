@@ -45,6 +45,12 @@ export default function RootLayout({
             <a href="/study" className="text-sm text-gray-400 hover:text-white">
               Study
             </a>
+            <a
+              href="/course/deep-learning-cv"
+              className="text-sm text-blue-400 hover:text-blue-300"
+            >
+              DL in CV
+            </a>
           </div>
         </nav>
         <main className="max-w-6xl mx-auto w-full px-6 py-8 flex-1">
