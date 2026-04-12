@@ -225,13 +225,15 @@ async def upload_file(
             },
         )
 
+        chunk_stmt = text("""
+            INSERT INTO chunks (id, note_id, chunk_index, text, heading, token_count, embedding)
+            VALUES (:id, :note_id, :chunk_index, :text, :heading, :token_count, :embedding)
+        """).bindparams(bindparam("embedding", type_=VectorType()))
+
         for chunk, embedding in zip(chunks, embeddings):
             embedding_str = "[" + ",".join(str(x) for x in embedding) + "]"
             await session.execute(
-                text("""
-                    INSERT INTO chunks (id, note_id, chunk_index, text, heading, token_count, embedding)
-                    VALUES (:id, :note_id, :chunk_index, :text, :heading, :token_count, :embedding::vector)
-                """),
+                chunk_stmt,
                 {
                     "id": str(uuid.uuid4()),
                     "note_id": str(note_id),
