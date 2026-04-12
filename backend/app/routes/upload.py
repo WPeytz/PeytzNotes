@@ -204,48 +204,56 @@ async def upload_file(
         raise HTTPException(status_code=400, detail="Could not extract any chunks from the file.")
 
     # Embed
-    chunk_texts = [c["text"] for c in chunks]
-    embeddings = embed_texts(chunk_texts)
+    try:
+        chunk_texts = [c["text"] for c in chunks]
+        embeddings = embed_texts(chunk_texts)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Embedding failed: {e}")
 
     # Store in DB
     note_id = uuid.uuid4()
 
-    async with async_session() as session:
-        await session.execute(
-            text("""
-                INSERT INTO notes (id, title, course, source_path, raw_content)
-                VALUES (:id, :title, :course, :source_path, :raw_content)
-            """),
-            {
-                "id": str(note_id),
-                "title": title,
-                "course": course,
-                "source_path": source_path,
-                "raw_content": content,
-            },
-        )
-
-        chunk_stmt = text("""
-            INSERT INTO chunks (id, note_id, chunk_index, text, heading, token_count, embedding)
-            VALUES (:id, :note_id, :chunk_index, :text, :heading, :token_count, :embedding)
-        """).bindparams(bindparam("embedding", type_=VectorType()))
-
-        for chunk, embedding in zip(chunks, embeddings):
-            embedding_str = "[" + ",".join(str(x) for x in embedding) + "]"
+    try:
+        async with async_session() as session:
             await session.execute(
-                chunk_stmt,
+                text("""
+                    INSERT INTO notes (id, title, course, source_path, raw_content)
+                    VALUES (:id, :title, :course, :source_path, :raw_content)
+                """),
                 {
-                    "id": str(uuid.uuid4()),
-                    "note_id": str(note_id),
-                    "chunk_index": chunk["chunk_index"],
-                    "text": chunk["text"],
-                    "heading": chunk["heading"],
-                    "token_count": chunk["token_count"],
-                    "embedding": embedding_str,
+                    "id": str(note_id),
+                    "title": title,
+                    "course": course,
+                    "source_path": source_path,
+                    "raw_content": content,
                 },
             )
 
-        await session.commit()
+            chunk_stmt = text("""
+                INSERT INTO chunks (id, note_id, chunk_index, text, heading, token_count, embedding)
+                VALUES (:id, :note_id, :chunk_index, :text, :heading, :token_count, :embedding)
+            """).bindparams(bindparam("embedding", type_=VectorType()))
+
+            for chunk, embedding in zip(chunks, embeddings):
+                embedding_str = "[" + ",".join(str(x) for x in embedding) + "]"
+                await session.execute(
+                    chunk_stmt,
+                    {
+                        "id": str(uuid.uuid4()),
+                        "note_id": str(note_id),
+                        "chunk_index": chunk["chunk_index"],
+                        "text": chunk["text"],
+                        "heading": chunk["heading"],
+                        "token_count": chunk["token_count"],
+                        "embedding": embedding_str,
+                    },
+                )
+
+            await session.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database insert failed: {e}")
 
     return {
         "note_id": str(note_id),
