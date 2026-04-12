@@ -180,6 +180,9 @@ async def upload_file(
     else:
         content = file_bytes.decode("utf-8", errors="replace")
 
+    # Remove null bytes — PDFs often contain them and PostgreSQL rejects them
+    content = content.replace("\x00", "")
+
     if len(content.strip()) < 50:
         raise HTTPException(status_code=400, detail="File has too little text content to process.")
 
