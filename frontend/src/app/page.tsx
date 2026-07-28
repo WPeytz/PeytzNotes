@@ -10,17 +10,39 @@ interface Message {
   sources?: Source[];
 }
 
+const examplePrompts = [
+  "Summarize my economics notes",
+  "What is the IS-LM model?",
+  "Compare fiscal and monetary policy",
+  "Explain backpropagation in simple terms",
+  "How do convolutional neural networks work?",
+  "Summarize my human-centered AI notes",
+  "Compare precision, recall, and F1 score",
+  "Connect ideas across my economics and AI notes",
+  "Create five exam questions from my notes",
+  "What are the most important concepts I should revise?",
+];
+
 export default function ChatPage() {
   const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [promptIndex, setPromptIndex] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setPromptIndex((current) => (current + 1) % examplePrompts.length);
+    }, 4000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -85,7 +107,7 @@ export default function ChatPage() {
           <div className="text-center text-gray-500 mt-20">
             <p className="text-lg">Ask anything about your notes</p>
             <p className="text-sm mt-2">
-              Try: &quot;Summarize my economics notes&quot; or &quot;What is the IS-LM model?&quot;
+              Try: &ldquo;{examplePrompts[promptIndex]}&rdquo;
             </p>
           </div>
         )}
