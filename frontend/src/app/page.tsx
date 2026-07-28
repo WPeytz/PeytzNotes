@@ -11,16 +11,16 @@ interface Message {
 }
 
 const examplePrompts = [
-  "Summarize my economics notes",
-  "What is the IS-LM model?",
-  "Compare fiscal and monetary policy",
-  "Explain backpropagation in simple terms",
-  "How do convolutional neural networks work?",
-  "Summarize my human-centered AI notes",
-  "Compare precision, recall, and F1 score",
-  "Connect ideas across my economics and AI notes",
-  "Create five exam questions from my notes",
-  "What are the most important concepts I should revise?",
+  "Summarize my Machine Learning & Data Mining notes",
+  "What are the key ideas in Statistics Evaluating AI?",
+  "Explain active machine learning and agency",
+  "How does reinforcement learning relate to control theory?",
+  "Compare symbolic artificial intelligence and deep learning",
+  "Create an exam guide for Machine Learning Operations",
+  "Summarize my Computational Data Analysis notes",
+  "Explain deep learning in computer vision",
+  "How does personal data interaction apply to mobile and wearables?",
+  "Connect UX design prototyping with human-centered AI",
 ];
 
 export default function ChatPage() {
