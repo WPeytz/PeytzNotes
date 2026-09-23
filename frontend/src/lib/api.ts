@@ -4,6 +4,8 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export interface Source {
   chunk_id: string;
+  note_id: string;
+  heading: string | null;
   note_title: string;
   course: string | null;
   text_preview: string;
@@ -93,6 +95,40 @@ export interface NoteSummary {
   source_path: string;
 }
 
+export interface ManagedNote extends NoteSummary {
+  is_public: boolean;
+}
+
+export async function listManagedNotes(adminKey: string): Promise<ManagedNote[]> {
+  const res = await fetch(`${API_BASE}/admin/notes`, {
+    headers: { "X-Admin-Key": adminKey },
+  });
+  if (!res.ok) throw new Error("Could not load notes. Check the owner key.");
+  const data = await res.json();
+  return data.notes;
+}
+
+export async function getManagedNote(adminKey: string, noteId: string): Promise<NoteDetail> {
+  const res = await fetch(`${API_BASE}/admin/notes/${noteId}`, {
+    headers: { "X-Admin-Key": adminKey },
+  });
+  if (!res.ok) throw new Error("Could not load note");
+  return res.json();
+}
+
+export async function setNoteVisibility(
+  adminKey: string,
+  noteId: string,
+  isPublic: boolean
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/notes/${noteId}/visibility`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey },
+    body: JSON.stringify({ is_public: isPublic }),
+  });
+  if (!res.ok) throw new Error("Could not change note visibility");
+}
+
 export async function listNotes(): Promise<NoteSummary[]> {
   const res = await fetch(`${API_BASE}/notes`);
   if (!res.ok) throw new Error("Failed to fetch notes");
@@ -140,7 +176,8 @@ export interface UploadResult {
 
 export async function uploadFile(
   file: File,
-  course: string
+  course: string,
+  adminKey: string
 ): Promise<UploadResult> {
   const formData = new FormData();
   formData.append("file", file);
@@ -148,6 +185,7 @@ export async function uploadFile(
 
   const res = await fetch(`${API_BASE}/upload`, {
     method: "POST",
+    headers: { "X-Admin-Key": adminKey },
     body: formData,
   });
   if (!res.ok) {
@@ -157,9 +195,10 @@ export async function uploadFile(
   return res.json();
 }
 
-export async function deleteNote(noteId: string): Promise<void> {
+export async function deleteNote(noteId: string, adminKey: string): Promise<void> {
   const res = await fetch(`${API_BASE}/notes/${noteId}`, {
     method: "DELETE",
+    headers: { "X-Admin-Key": adminKey },
   });
   if (!res.ok) throw new Error("Failed to delete note");
 }

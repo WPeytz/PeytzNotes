@@ -66,7 +66,7 @@ async def search_chunks(
             1 - (c.embedding <=> :embedding) AS similarity
         FROM chunks c
         JOIN notes n ON c.note_id = n.id
-        WHERE 1=1
+        WHERE n.is_public = TRUE
         {where_clause}
         ORDER BY c.embedding <=> :embedding
         LIMIT :limit

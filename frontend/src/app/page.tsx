@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Markdown from "@/components/Markdown";
+import SourceLink from "@/components/SourceLink";
 import { createChat, sendMessage, Source } from "@/lib/api";
 
 interface Message {
@@ -139,13 +140,14 @@ export default function ChatPage() {
                     key={j}
                     className="text-xs bg-gray-900 border border-gray-800 rounded px-3 py-2"
                   >
-                    <span className="text-blue-400">{src.note_title}</span>
+                    <SourceLink source={src} />
                     {src.course && (
                       <span className="text-gray-500 ml-2">({src.course})</span>
                     )}
                     <span className="text-gray-600 ml-2">
                       {(src.similarity * 100).toFixed(0)}% match
                     </span>
+                    <p className="text-gray-400 mt-1 line-clamp-2">{src.text_preview}</p>
                   </div>
                 ))}
               </div>

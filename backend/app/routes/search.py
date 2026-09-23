@@ -1,17 +1,18 @@
 """Search endpoint — vector similarity search over notes."""
 
 from uuid import UUID
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
 from app.services.retrieval import search_chunks
+from app.rate_limit import check_demo_rate_limit
 from app.models.database import async_session
 from sqlalchemy import text
 
 router = APIRouter()
 
 
-@router.get("/search")
+@router.get("/search", dependencies=[Depends(check_demo_rate_limit)])
 async def search(
-    q: str = Query(..., description="Search query"),
+    q: str = Query(..., min_length=1, max_length=500, description="Search query"),
     course: str | None = Query(None, description="Filter by course name"),
     limit: int = Query(5, ge=1, le=20, description="Number of results"),
 ):
@@ -25,7 +26,7 @@ async def get_note(note_id: UUID):
     """Get the full content of a note by ID."""
     async with async_session() as session:
         result = await session.execute(
-            text("SELECT id, title, course, source_path, raw_content FROM notes WHERE id = :id"),
+            text("SELECT id, title, course, source_path, raw_content FROM notes WHERE id = :id AND is_public = TRUE"),
             {"id": str(note_id)},
         )
         row = result.mappings().first()
@@ -49,10 +50,10 @@ async def list_notes(
 ):
     """List all notes with id, title, course, source_path (no content)."""
     if course:
-        sql = text("SELECT id, title, course, source_path FROM notes WHERE course = :course ORDER BY created_at DESC")
+        sql = text("SELECT id, title, course, source_path FROM notes WHERE is_public = TRUE AND course = :course ORDER BY created_at DESC")
         params = {"course": course}
     else:
-        sql = text("SELECT id, title, course, source_path FROM notes ORDER BY source_path")
+        sql = text("SELECT id, title, course, source_path FROM notes WHERE is_public = TRUE ORDER BY source_path")
         params = {}
 
     async with async_session() as session:

@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import Markdown from "@/components/Markdown";
+import SourceLink from "@/components/SourceLink";
+import Link from "next/link";
 import {
   uploadFile,
   deleteNote,
@@ -27,6 +29,7 @@ export default function DeepLearningCVPage() {
   const [notes, setNotes] = useState<NoteSummary[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState("");
+  const [adminKey, setAdminKey] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -69,8 +72,8 @@ export default function DeepLearningCVPage() {
     const results: string[] = [];
     for (const file of Array.from(files)) {
       try {
-        const res = await uploadFile(file, COURSE_NAME);
-        results.push(`${res.title}: ${res.chunks} chunks`);
+        const res = await uploadFile(file, COURSE_NAME, adminKey);
+        results.push(`${res.title}: ${res.chunks} chunks. Review and publish in the owner dashboard.`);
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Upload failed";
         results.push(`${file.name}: ${msg}`);
@@ -92,7 +95,7 @@ export default function DeepLearningCVPage() {
 
   async function handleDelete(noteId: string) {
     try {
-      await deleteNote(noteId);
+      await deleteNote(noteId, adminKey);
       loadNotes();
     } catch {
       // ignore
@@ -199,8 +202,22 @@ export default function DeepLearningCVPage() {
       {/* ─── Materials Tab ─── */}
       {activeTab === "materials" && (
         <div>
+          <p className="text-sm text-gray-400 mb-4">
+            This demo shows published materials. <Link href="/admin" className="text-blue-400 hover:underline">Owner dashboard</Link>
+          </p>
+          <label className="block mb-4 text-sm text-gray-400">
+            Owner key for managing materials
+            <input
+              type="password"
+              autoComplete="off"
+              value={adminKey}
+              onChange={(event) => setAdminKey(event.target.value)}
+              placeholder="Enter owner key to upload or remove"
+              className="block mt-2 w-full max-w-md bg-gray-900 border border-gray-700 rounded-lg px-4 py-2"
+            />
+          </label>
           {/* Upload area */}
-          <div
+          {adminKey && <div
             onDragOver={(e) => {
               e.preventDefault();
               setDragOver(true);
@@ -232,7 +249,7 @@ export default function DeepLearningCVPage() {
             <p className="text-gray-600 text-xs mt-1">
               Supports .pdf, .md, .txt
             </p>
-          </div>
+          </div>}
 
           {/* Upload feedback */}
           {uploadMessage && (
@@ -248,8 +265,7 @@ export default function DeepLearningCVPage() {
             </h2>
             {notes.length === 0 ? (
               <p className="text-sm text-gray-500">
-                No materials uploaded yet. Upload lecture slides, notes, or
-                readings to get started.
+                No materials have been published for this course yet.
               </p>
             ) : (
               <div className="space-y-2">
@@ -264,12 +280,12 @@ export default function DeepLearningCVPage() {
                         {note.source_path}
                       </p>
                     </div>
-                    <button
+                    {adminKey && <button
                       onClick={() => handleDelete(note.id)}
                       className="text-xs text-gray-500 hover:text-red-400 transition-colors"
                     >
                       Remove
-                    </button>
+                    </button>}
                   </div>
                 ))}
               </div>
@@ -316,12 +332,11 @@ export default function DeepLearningCVPage() {
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {studySources.map((src, i) => (
-                      <span
+                      <SourceLink
                         key={i}
+                        source={src}
                         className="text-xs bg-gray-800 text-gray-400 px-2 py-1 rounded"
-                      >
-                        {src.note_title}
-                      </span>
+                      />
                     ))}
                   </div>
                 </div>
@@ -369,12 +384,11 @@ export default function DeepLearningCVPage() {
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {studySources.map((src, i) => (
-                      <span
+                      <SourceLink
                         key={i}
+                        source={src}
                         className="text-xs bg-gray-800 text-gray-400 px-2 py-1 rounded"
-                      >
-                        {src.note_title}
-                      </span>
+                      />
                     ))}
                   </div>
                 </div>
@@ -425,12 +439,11 @@ export default function DeepLearningCVPage() {
                     <div className="mt-3 pt-2 border-t border-gray-800">
                       <div className="flex flex-wrap gap-1">
                         {msg.sources.map((src, j) => (
-                          <span
+                          <SourceLink
                             key={j}
+                            source={src}
                             className="text-xs bg-gray-800 text-gray-500 px-1.5 py-0.5 rounded"
-                          >
-                            {src.note_title}
-                          </span>
+                          />
                         ))}
                       </div>
                     </div>

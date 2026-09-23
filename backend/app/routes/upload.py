@@ -4,12 +4,13 @@ import os
 import re
 import uuid
 import tempfile
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from openai import OpenAI
 
 from app.models.database import async_session
 from sqlalchemy import text, bindparam
 from sqlalchemy.types import UserDefinedType
+from app.auth import require_admin
 
 import tiktoken
 
@@ -154,7 +155,7 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
     return all_embeddings
 
 
-@router.post("/upload")
+@router.post("/upload", dependencies=[Depends(require_admin)])
 async def upload_file(
     file: UploadFile = File(...),
     course: str = Form(...),
@@ -169,7 +170,12 @@ async def upload_file(
             detail=f"Unsupported file type: .{ext}. Use PDF, markdown, or text files.",
         )
 
+    if file.size is not None and file.size > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Files must be 20 MB or smaller")
+
     file_bytes = await file.read()
+    if len(file_bytes) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Files must be 20 MB or smaller")
 
     # Extract text content
     if ext == "pdf":
@@ -267,7 +273,7 @@ async def upload_file(
     }
 
 
-@router.delete("/notes/{note_id}")
+@router.delete("/notes/{note_id}", dependencies=[Depends(require_admin)])
 async def delete_note(note_id: str):
     """Delete a note and its chunks."""
     async with async_session() as session:

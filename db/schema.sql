@@ -13,11 +13,13 @@ CREATE TABLE notes (
     course      TEXT,                       -- inferred from folder name
     source_path TEXT NOT NULL,              -- original file path in Notion export
     raw_content TEXT NOT NULL,              -- full markdown content
+    is_public   BOOLEAN NOT NULL DEFAULT FALSE, -- explicitly approved demo notes
     created_at  TIMESTAMPTZ DEFAULT now(),
     updated_at  TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE INDEX idx_notes_course ON notes (course);
+CREATE INDEX idx_notes_public_course ON notes (is_public, course);
 
 -- ============================================================
 -- CHUNKS — embeddings for retrieval
@@ -45,6 +47,7 @@ CREATE INDEX idx_chunks_note_id ON chunks (note_id);
 CREATE TABLE chats (
     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     title       TEXT,                       -- auto-generated from first message
+    public_demo BOOLEAN NOT NULL DEFAULT FALSE,
     created_at  TIMESTAMPTZ DEFAULT now(),
     updated_at  TIMESTAMPTZ DEFAULT now()
 );
@@ -62,3 +65,10 @@ CREATE TABLE messages (
 );
 
 CREATE INDEX idx_messages_chat_id ON messages (chat_id);
+
+-- Per-client budget for public AI requests
+CREATE TABLE demo_rate_limits (
+    client_key TEXT PRIMARY KEY,
+    hour_bucket BIGINT NOT NULL,
+    request_count INTEGER NOT NULL
+);

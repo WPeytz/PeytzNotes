@@ -1,16 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import Markdown from "@/components/Markdown";
-import { search, getNote, SearchResult, NoteDetail } from "@/lib/api";
+import Link from "next/link";
+import { search, SearchResult } from "@/lib/api";
 
 export default function SearchPage() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
-  const [openNote, setOpenNote] = useState<NoteDetail | null>(null);
-  const [noteLoading, setNoteLoading] = useState(false);
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -18,7 +16,6 @@ export default function SearchPage() {
 
     setLoading(true);
     setSearched(true);
-    setOpenNote(null);
     try {
       const data = await search(query.trim());
       setResults(data.results);
@@ -26,18 +23,6 @@ export default function SearchPage() {
       setResults([]);
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function handleOpenNote(noteId: string) {
-    setNoteLoading(true);
-    try {
-      const note = await getNote(noteId);
-      setOpenNote(note);
-    } catch {
-      // ignore
-    } finally {
-      setNoteLoading(false);
     }
   }
 
@@ -70,10 +55,10 @@ export default function SearchPage() {
 
       <div className="space-y-4">
         {results.map((result) => (
-          <div
+          <Link
             key={result.chunk_id}
-            onClick={() => handleOpenNote(result.note_id)}
-            className="bg-gray-900 border border-gray-800 rounded-lg p-4 cursor-pointer hover:border-blue-500/50 transition-colors"
+            href={`/notes/${result.note_id}${result.heading ? `?section=${encodeURIComponent(result.heading)}` : ""}`}
+            className="block bg-gray-900 border border-gray-800 rounded-lg p-4 hover:border-blue-500/50 transition-colors"
           >
             <div className="flex items-center gap-3 mb-2">
               <h2 className="text-blue-400 font-medium">{result.note_title}</h2>
@@ -92,46 +77,9 @@ export default function SearchPage() {
             )}
 
             <p className="text-sm text-gray-300 line-clamp-3">{result.text}</p>
-          </div>
+          </Link>
         ))}
       </div>
-
-      {/* Full note modal */}
-      {(openNote || noteLoading) && (
-        <div
-          className="fixed inset-0 bg-black/70 z-50 flex items-start justify-center pt-12 px-4"
-          onClick={() => setOpenNote(null)}
-        >
-          <div
-            className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-3xl max-h-[80vh] overflow-y-auto p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {noteLoading ? (
-              <p className="text-gray-500 animate-pulse">Loading note...</p>
-            ) : openNote ? (
-              <>
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h2 className="text-lg font-semibold">{openNote.title}</h2>
-                    {openNote.course && (
-                      <span className="text-xs text-gray-400">{openNote.course}</span>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => setOpenNote(null)}
-                    className="text-gray-500 hover:text-white text-2xl leading-none px-2"
-                  >
-                    &times;
-                  </button>
-                </div>
-                <div className="prose prose-invert prose-sm max-w-none">
-                  <Markdown>{openNote.content}</Markdown>
-                </div>
-              </>
-            ) : null}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

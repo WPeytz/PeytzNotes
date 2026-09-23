@@ -2,9 +2,10 @@
 
 import re
 from collections import defaultdict
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
 from app.services.chat import generate_exam_summary, generate_flashcards
 from app.models.database import async_session
+from app.rate_limit import check_demo_rate_limit
 from sqlalchemy import text
 
 router = APIRouter()
@@ -31,7 +32,7 @@ async def list_courses():
     """
     async with async_session() as session:
         result = await session.execute(
-            text("SELECT DISTINCT source_path FROM notes")
+            text("SELECT DISTINCT source_path FROM notes WHERE is_public = TRUE")
         )
         paths = [row[0] for row in result]
 
@@ -70,13 +71,13 @@ async def list_courses():
     return {"hierarchy": hierarchy}
 
 
-@router.post("/study/exam-summary")
+@router.post("/study/exam-summary", dependencies=[Depends(check_demo_rate_limit)])
 async def exam_summary(course: str = Query(..., description="Course name")):
     """Generate an exam-ready summary for a specific course."""
     return await generate_exam_summary(course)
 
 
-@router.post("/study/flashcards")
+@router.post("/study/flashcards", dependencies=[Depends(check_demo_rate_limit)])
 async def flashcards(course: str = Query(..., description="Course name")):
     """Generate flashcards from a specific course's notes."""
     return await generate_flashcards(course)

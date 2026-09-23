@@ -4,6 +4,7 @@ import json
 import os
 import uuid
 from openai import OpenAI
+from fastapi import HTTPException
 
 from app.services.retrieval import search_chunks
 from app.models.database import async_session
@@ -40,7 +41,7 @@ async def create_chat() -> dict:
     chat_id = uuid.uuid4()
     async with async_session() as session:
         await session.execute(
-            text("INSERT INTO chats (id) VALUES (:id)"),
+            text("INSERT INTO chats (id, public_demo) VALUES (:id, TRUE)"),
             {"id": str(chat_id)},
         )
         await session.commit()
@@ -89,6 +90,14 @@ async def chat(chat_id: str, user_message: str, course: str | None = None) -> di
 
     Returns: {answer, sources}
     """
+    # Old sessions can contain answers based on notes that are now private.
+    async with async_session() as session:
+        result = await session.execute(
+            text("SELECT public_demo FROM chats WHERE id = :id"), {"id": chat_id}
+        )
+        if result.scalar_one_or_none() is not True:
+            raise HTTPException(status_code=404, detail="Chat not found")
+
     # 1. Retrieve relevant chunks
     chunks = await search_chunks(user_message, limit=5, course=course)
 
@@ -116,6 +125,8 @@ async def chat(chat_id: str, user_message: str, course: str | None = None) -> di
     sources = [
         {
             "chunk_id": c["chunk_id"],
+            "note_id": c["note_id"],
+            "heading": c["heading"],
             "note_title": c["note_title"],
             "course": c["course"],
             "text_preview": c["text"][:200],
@@ -138,6 +149,8 @@ async def generate_exam_summary(course: str) -> dict:
     """
     # Use the course name as the search query to get representative content
     chunks = await search_chunks(course, limit=15, course=course)
+    if not chunks:
+        raise HTTPException(status_code=404, detail="No published notes are available for this course")
     context = build_context_prompt(chunks)
 
     messages = [
@@ -155,6 +168,8 @@ async def generate_exam_summary(course: str) -> dict:
     sources = [
         {
             "chunk_id": c["chunk_id"],
+            "note_id": c["note_id"],
+            "heading": c["heading"],
             "note_title": c["note_title"],
             "course": c["course"],
             "text_preview": c["text"][:200],
@@ -172,6 +187,8 @@ async def generate_flashcards(course: str) -> dict:
     Retrieves 10 chunks to cover key concepts.
     """
     chunks = await search_chunks(course, limit=10, course=course)
+    if not chunks:
+        raise HTTPException(status_code=404, detail="No published notes are available for this course")
     context = build_context_prompt(chunks)
 
     messages = [
@@ -189,6 +206,8 @@ async def generate_flashcards(course: str) -> dict:
     sources = [
         {
             "chunk_id": c["chunk_id"],
+            "note_id": c["note_id"],
+            "heading": c["heading"],
             "note_title": c["note_title"],
             "course": c["course"],
             "text_preview": c["text"][:200],

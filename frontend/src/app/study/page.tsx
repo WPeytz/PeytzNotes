@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Markdown from "@/components/Markdown";
+import SourceLink from "@/components/SourceLink";
 import { getCourseHierarchy, getExamSummary, getFlashcards, Major, Source } from "@/lib/api";
 
 type Mode = "exam-summary" | "flashcards";
@@ -131,12 +132,11 @@ export default function StudyPage() {
               </p>
               <div className="flex flex-wrap gap-2">
                 {sources.map((src, i) => (
-                  <span
+                  <SourceLink
                     key={i}
+                    source={src}
                     className="text-xs bg-gray-800 text-gray-400 px-2 py-1 rounded"
-                  >
-                    {src.note_title}
-                  </span>
+                  />
                 ))}
               </div>
             </div>
