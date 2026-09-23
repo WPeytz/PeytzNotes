@@ -3,19 +3,71 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { listNotes, NoteSummary } from "@/lib/api";
+import { buildNotesTree, filterNotesTree, noteNameSort, NoteFolder } from "./tree";
 
-function cleanName(name: string): string {
-  return name.replace(/\s+[a-f0-9]{20,}$/i, "");
+function NoteLink({ note, overview = false }: { note: NoteSummary; overview?: boolean }) {
+  return (
+    <li>
+      <Link
+        className="block rounded-md px-2 py-1.5 text-sm text-blue-400 hover:bg-gray-800 hover:text-blue-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500"
+        href={`/notes/${note.id}`}
+        aria-label={overview ? `${note.title} overview` : undefined}
+      >
+        {overview ? "Overview" : note.title}
+      </Link>
+    </li>
+  );
 }
 
-function groupLabel(note: NoteSummary): string {
-  const parts = note.source_path.split("/");
-  if (parts[0] === "uploads") return note.course || "Uploaded notes";
-  const major = cleanName(parts[0] || "Other");
-  const semester = parts.length >= 4 && /^\d+\s+Semester$/i.test(cleanName(parts[1]))
-    ? ` — ${cleanName(parts[1])}`
-    : "";
-  return `${major}${semester}`;
+function Folder({ folder, depth, searching }: {
+  folder: NoteFolder;
+  depth: number;
+  searching: boolean;
+}) {
+  const entries = [
+    ...[...folder.folders.values()].map((child) => ({ kind: "folder" as const, name: child.name, child })),
+    ...folder.notes.map((note) => ({ kind: "note" as const, name: note.title, note })),
+  ].sort((a, b) => noteNameSort.compare(a.name, b.name));
+
+  return (
+    <details
+      open={searching || depth === 0}
+      className={depth === 0
+        ? "rounded-xl border border-gray-800 bg-gray-900/60"
+        : "rounded-lg border border-gray-800/80 bg-gray-900/40"}
+    >
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-4 py-3 hover:bg-gray-800/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 [&::-webkit-details-marker]:hidden">
+        <span className={depth === 0 ? "font-semibold text-gray-100" : "font-medium text-gray-200"}>
+          {folder.name}
+        </span>
+        <span className="flex shrink-0 items-center gap-3 text-xs text-gray-400">
+          {folder.count} {folder.count === 1 ? "page" : "pages"}
+          <span aria-hidden="true" className="text-base">⌄</span>
+        </span>
+      </summary>
+      <div className="border-t border-gray-800 px-3 py-3">
+        {folder.overview && (
+          <ul className="mb-2">
+            <NoteLink note={folder.overview} overview />
+          </ul>
+        )}
+        <div className="space-y-2">
+          {entries.map((entry) => entry.kind === "folder" ? (
+            <Folder
+              key={entry.child.path}
+              folder={entry.child}
+              depth={depth + 1}
+              searching={searching}
+            />
+          ) : (
+            <ul key={entry.note.id} className={depth === 0 ? "rounded-lg border border-gray-800/80 bg-gray-900/40 p-2" : ""}>
+              <NoteLink note={entry.note} />
+            </ul>
+          ))}
+        </div>
+      </div>
+    </details>
+  );
 }
 
 export default function NotesPage() {
@@ -29,33 +81,26 @@ export default function NotesPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const groups = useMemo(() => {
-    const matches = notes.filter((note) =>
-      `${note.title} ${note.course || ""}`.toLowerCase().includes(query.toLowerCase())
-    );
-    const grouped = new Map<string, Map<string, NoteSummary[]>>();
-    for (const note of matches) {
-      const label = groupLabel(note);
-      if (!grouped.has(label)) grouped.set(label, new Map());
-      const courses = grouped.get(label)!;
-      const course = note.course || "Other notes";
-      if (!courses.has(course)) courses.set(course, []);
-      courses.get(course)!.push(note);
-    }
-    return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b));
+  const tree = useMemo(() => {
+    const root = buildNotesTree(notes);
+    return filterNotesTree(root, query);
   }, [notes, query]);
+  const collections = [...(tree?.folders.values() || [])]
+    .sort((a, b) => noteNameSort.compare(a.name, b.name));
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <h1 className="text-2xl font-semibold mb-2">Browse notes</h1>
-      <p className="text-sm text-gray-400 mb-6">Explore the notes available in this demo by course.</p>
-      <label className="block mb-6">
+    <div className="mx-auto max-w-4xl">
+      <h1 className="mb-2 text-2xl font-semibold">Browse notes</h1>
+      <p className="mb-6 text-sm text-gray-400">
+        Explore {notes.length} published pages by subject, course, and topic.
+      </p>
+      <label className="mb-6 block">
         <span className="sr-only">Filter notes</span>
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Filter by note or course..."
-          className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
+          placeholder="Filter by note, course, or topic..."
+          className="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
         />
       </label>
       {loading && <p className="text-gray-400">Loading notes...</p>}
@@ -63,31 +108,14 @@ export default function NotesPage() {
       {!loading && !error && notes.length === 0 && (
         <p className="text-gray-400">No notes have been published for the demo yet.</p>
       )}
-      {!loading && !error && notes.length > 0 && groups.length === 0 && (
+      {!loading && !error && notes.length > 0 && collections.length === 0 && (
         <p className="text-gray-400">No notes match that filter.</p>
       )}
-      <div className="space-y-8">
-        {groups.map(([group, courses]) => (
-          <section key={group}>
-            <h2 className="text-lg font-semibold text-gray-200 mb-4">{group}</h2>
-            <div className="space-y-5">
-              {[...courses.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([course, items]) => (
-                <div key={course} className="border border-gray-800 rounded-xl p-4 bg-gray-900/60">
-                  <h3 className="font-medium mb-3">{course}</h3>
-                  <ul className="space-y-2">
-                    {items.sort((a, b) => a.title.localeCompare(b.title)).map((note) => (
-                      <li key={note.id}>
-                        <Link className="text-sm text-blue-400 hover:text-blue-300 hover:underline" href={`/notes/${note.id}`}>
-                          {note.title}
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          </section>
+      <div className="space-y-4">
+        {collections.map((folder) => (
+          <Folder key={folder.path} folder={folder} depth={0} searching={Boolean(query.trim())} />
         ))}
+        {tree?.notes.map((note) => <ul key={note.id}><NoteLink note={note} /></ul>)}
       </div>
     </div>
   );
