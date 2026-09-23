@@ -52,6 +52,24 @@ class RefreshTests(unittest.TestCase):
             self.assertEqual(changes[0][2]["id"], "database-id")
             self.assertFalse(missing)
 
+    def test_local_image_paths_with_parentheses_and_hash(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            folder = root / "AI & Data" / "Course"
+            folder.mkdir(parents=True)
+            (folder / "Week (PCA) #5.png").write_bytes(b"image")
+            page = folder / ("Lecture " + "b" * 32 + ".md")
+            page.write_text(
+                "# Lecture\n\nA long enough introduction to make this note eligible.\n\n"
+                "![Chart](Week%20(PCA)%20%235.png)\n", encoding="utf-8"
+            )
+            result = subprocess.CompletedProcess([], 0, "Principal components\n", "")
+            with patch("ingestion.notion_parser.subprocess.run", return_value=result):
+                note = parse_export(str(root), include_ocr=True)[0]
+            self.assertEqual(note.ocr_images, 1)
+            self.assertEqual(note.skipped_images, 0)
+            self.assertIn("Principal components", note.content)
+
 
 if __name__ == "__main__":
     unittest.main()

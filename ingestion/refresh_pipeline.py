@@ -46,7 +46,7 @@ def export_directory(export: Path):
                 if not destination.is_relative_to(root.resolve()):
                     raise ValueError("Export contains an unsafe file path")
                 total_bytes += item.file_size
-                if item.file_size > 150 * 1024 * 1024 or total_bytes > 3 * 1024 * 1024 * 1024:
+                if item.file_size > 150 * 1024 * 1024 or total_bytes > 5 * 1024 * 1024 * 1024:
                     raise ValueError("Export is larger than the safe processing limit")
             archive.extractall(root)
         yield root
@@ -111,7 +111,7 @@ def changes_for(notes: list[ParsedNote], existing: dict[str, dict]) -> tuple[lis
 
 
 def save_change(connection, kind: str, note: ParsedNote, old: dict | None) -> None:
-    note_id = old["id"] if old else uuid.uuid4()
+    note_id = str(old["id"]) if old else str(uuid.uuid4())
     needs_embeddings = kind in {"new", "reindex"}
     chunks = chunk_note(note.title, note.content) if needs_embeddings else []
     embeddings = embed_texts([chunk.text for chunk in chunks]) if chunks else []
@@ -136,7 +136,7 @@ def save_change(connection, kind: str, note: ParsedNote, old: dict | None) -> No
                     INSERT INTO chunks (id, note_id, chunk_index, text, heading, token_count, embedding)
                     VALUES %s
                 """, [
-                    (uuid.uuid4(), note_id, chunk.chunk_index, chunk.text,
+                    (str(uuid.uuid4()), note_id, chunk.chunk_index, chunk.text,
                      chunk.heading, chunk.token_count, embedding)
                     for chunk, embedding in zip(chunks, embeddings)
                 ], template="(%s, %s, %s, %s, %s, %s, %s::vector)")
@@ -158,6 +158,7 @@ def run(export: Path, apply: bool) -> None:
             print(f"Not in current export: {len(missing)} existing pages (retained unchanged)")
             print(f"Referenced images OCR'd: {sum(note.ocr_images for note in notes)}")
             print(f"Images skipped: {sum(note.skipped_images for note in notes)}")
+            print(f"External images outside export: {sum(note.external_images for note in notes)}")
             for kind, note, old in changes:
                 visibility = "private" if old is None else ("public" if old["is_public"] else "private")
                 print(f"  {kind:8} [{visibility}] {note.source_path}")

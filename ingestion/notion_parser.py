@@ -3,13 +3,15 @@
 import os
 import re
 import subprocess
+import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 
-IMAGE_PATTERN = re.compile(r"!\[([^\]]*)\]\((?:<([^>]+)>|([^)]*))\)")
-IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".bmp"}
+IMAGE_PATTERN = re.compile(r"!\[([^\]]*)\]\((?:<([^>]+)>|((?:[^()]|\([^()]*\))+))\)")
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".bmp", ".heic"}
 
 
 @dataclass
@@ -20,24 +22,25 @@ class ParsedNote:
     content: str
     ocr_images: int = 0
     skipped_images: int = 0
+    external_images: int = 0
 
 
 def image_text(
-    raw: str, md_file: Path, export_root: Path, cache: dict[Path, str]
-) -> tuple[str, int, int]:
+    raw: str, md_file: Path, export_root: Path, cache: dict[Path, str | None]
+) -> tuple[str, int, int, int]:
     """OCR local images referenced by a Notion Markdown page."""
     sections: list[str] = []
     recognized = 0
     skipped = 0
+    external = 0
     root = export_root.resolve()
 
     for match in IMAGE_PATTERN.finditer(raw):
         target = (match.group(2) or match.group(3) or "").strip()
-        parsed = urlsplit(target)
-        if parsed.scheme or parsed.netloc:
-            skipped += 1
+        if urlsplit(target).scheme or target.startswith("//"):
+            external += 1
             continue
-        image_path = (md_file.parent / unquote(parsed.path)).resolve()
+        image_path = (md_file.parent / unquote(target)).resolve()
         if not image_path.is_relative_to(root) or not image_path.is_file():
             skipped += 1
             continue
@@ -46,15 +49,10 @@ def image_text(
             continue
 
         if image_path not in cache:
-            result = subprocess.run(
-                ["tesseract", str(image_path), "stdout", "-l",
-                 os.getenv("PEYTZNOTES_OCR_LANG", "eng+dan")],
-                capture_output=True, text=True, timeout=90, check=False,
-            )
-            if result.returncode:
-                skipped += 1
-                continue
-            cache[image_path] = result.stdout.strip()
+            cache[image_path] = ocr_file(image_path)
+        if cache[image_path] is None:
+            skipped += 1
+            continue
 
         recognized += 1
         if cache[image_path]:
@@ -62,8 +60,30 @@ def image_text(
             sections.append(f"### {label}\n\n{cache[image_path]}")
 
     if not sections:
-        return "", recognized, skipped
-    return "## Text found in images\n\n" + "\n\n".join(sections), recognized, skipped
+        return "", recognized, skipped, external
+    return "## Text found in images\n\n" + "\n\n".join(sections), recognized, skipped, external
+
+
+def ocr_file(image_path: Path) -> str | None:
+    try:
+        if image_path.suffix.lower() == ".heic":
+            with tempfile.TemporaryDirectory(prefix="peytznotes-heic-") as temporary:
+                converted = Path(temporary) / "image.png"
+                conversion = subprocess.run(
+                    ["sips", "-s", "format", "png", str(image_path), "--out", str(converted)],
+                    capture_output=True, text=True, timeout=90, check=False,
+                )
+                if conversion.returncode:
+                    return None
+                return ocr_file(converted)
+        result = subprocess.run(
+            ["tesseract", str(image_path), "stdout", "-l",
+             os.getenv("PEYTZNOTES_OCR_LANG", "eng+dan")],
+            capture_output=True, text=True, timeout=90, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return result.stdout.strip() if result.returncode == 0 else None
 
 
 def clean_text(text: str) -> str:
@@ -71,7 +91,7 @@ def clean_text(text: str) -> str:
     # Remove Notion ID suffixes from inline references (e.g. "Page Title 32af8b...")
     text = re.sub(r" [a-f0-9]{32}", "", text)
     # Remove image references (we don't embed images)
-    text = re.sub(r"!\[.*?\]\(.*?\)", "", text)
+    text = IMAGE_PATTERN.sub("", text)
     # Remove empty links
     text = re.sub(r"\[]\(.*?\)", "", text)
     # Collapse multiple blank lines into two
@@ -135,14 +155,38 @@ def parse_export(export_dir: str, include_ocr: bool = False) -> list[ParsedNote]
         raise FileNotFoundError(f"Export directory not found: {export_dir}")
 
     notes: list[ParsedNote] = []
-    ocr_cache: dict[Path, str] = {}
+    ocr_cache: dict[Path, str | None] = {}
 
-    for md_file in sorted(export_root.rglob("*.md")):
+    md_files = sorted(export_root.rglob("*.md"))
+    if include_ocr:
+        root = export_root.resolve()
+        candidates: set[Path] = set()
+        for md_file in md_files:
+            raw = md_file.read_text(encoding="utf-8", errors="replace")
+            for match in IMAGE_PATTERN.finditer(raw):
+                target = (match.group(2) or match.group(3) or "").strip()
+                if urlsplit(target).scheme or target.startswith("//"):
+                    continue
+                image_path = (md_file.parent / unquote(target)).resolve()
+                if (image_path.is_relative_to(root) and image_path.is_file()
+                        and image_path.suffix.lower() in IMAGE_EXTENSIONS
+                        and image_path.stat().st_size <= 25 * 1024 * 1024):
+                    candidates.add(image_path)
+        print(f"OCR processing {len(candidates)} distinct referenced images", flush=True)
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            for index, (path, result) in enumerate(
+                zip(sorted(candidates), executor.map(ocr_file, sorted(candidates))), 1
+            ):
+                ocr_cache[path] = result
+                if index % 500 == 0:
+                    print(f"OCR completed {index}/{len(candidates)}", flush=True)
+
+    for md_file in md_files:
         raw = md_file.read_text(encoding="utf-8", errors="replace")
         content = clean_text(raw)
-        ocr_content, ocr_images, skipped_images = (
+        ocr_content, ocr_images, skipped_images, external_images = (
             image_text(raw, md_file, export_root, ocr_cache)
-            if include_ocr else ("", 0, 0)
+            if include_ocr else ("", 0, 0, 0)
         )
         if ocr_content:
             content = f"{content}\n\n{ocr_content}"
@@ -162,6 +206,7 @@ def parse_export(export_dir: str, include_ocr: bool = False) -> list[ParsedNote]
             content=content,
             ocr_images=ocr_images,
             skipped_images=skipped_images,
+            external_images=external_images,
         ))
 
     print(f"Parsed {len(notes)} notes from {export_dir}")
