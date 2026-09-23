@@ -96,6 +96,7 @@ class PublicVisibilityTests(unittest.IsolatedAsyncioTestCase):
             with patch.object(retrieval, "embed_query", return_value=[0.0] * 1536):
                 await retrieval.search_chunks("test")
         self.assertIn("n.is_public = TRUE", session.queries[0])
+        self.assertIn("position(lower(:query) in lower(c.text))", session.queries[0])
 
     async def test_legacy_chat_cannot_reuse_private_history(self):
         session = RecordingSession()

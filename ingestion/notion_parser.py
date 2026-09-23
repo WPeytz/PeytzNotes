@@ -2,8 +2,14 @@
 
 import os
 import re
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
+
+
+IMAGE_PATTERN = re.compile(r"!\[([^\]]*)\]\((?:<([^>]+)>|([^)]*))\)")
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".bmp"}
 
 
 @dataclass
@@ -12,6 +18,52 @@ class ParsedNote:
     course: str | None
     source_path: str
     content: str
+    ocr_images: int = 0
+    skipped_images: int = 0
+
+
+def image_text(
+    raw: str, md_file: Path, export_root: Path, cache: dict[Path, str]
+) -> tuple[str, int, int]:
+    """OCR local images referenced by a Notion Markdown page."""
+    sections: list[str] = []
+    recognized = 0
+    skipped = 0
+    root = export_root.resolve()
+
+    for match in IMAGE_PATTERN.finditer(raw):
+        target = (match.group(2) or match.group(3) or "").strip()
+        parsed = urlsplit(target)
+        if parsed.scheme or parsed.netloc:
+            skipped += 1
+            continue
+        image_path = (md_file.parent / unquote(parsed.path)).resolve()
+        if not image_path.is_relative_to(root) or not image_path.is_file():
+            skipped += 1
+            continue
+        if image_path.suffix.lower() not in IMAGE_EXTENSIONS or image_path.stat().st_size > 25 * 1024 * 1024:
+            skipped += 1
+            continue
+
+        if image_path not in cache:
+            result = subprocess.run(
+                ["tesseract", str(image_path), "stdout", "-l",
+                 os.getenv("PEYTZNOTES_OCR_LANG", "eng+dan")],
+                capture_output=True, text=True, timeout=90, check=False,
+            )
+            if result.returncode:
+                skipped += 1
+                continue
+            cache[image_path] = result.stdout.strip()
+
+        recognized += 1
+        if cache[image_path]:
+            label = (match.group(1).strip() or image_path.stem).replace("\n", " ")
+            sections.append(f"### {label}\n\n{cache[image_path]}")
+
+    if not sections:
+        return "", recognized, skipped
+    return "## Text found in images\n\n" + "\n\n".join(sections), recognized, skipped
 
 
 def clean_text(text: str) -> str:
@@ -69,7 +121,7 @@ def extract_title(content: str, file_path: Path) -> str:
     return name
 
 
-def parse_export(export_dir: str) -> list[ParsedNote]:
+def parse_export(export_dir: str, include_ocr: bool = False) -> list[ParsedNote]:
     """Walk a Notion export directory and return parsed notes.
 
     Args:
@@ -83,10 +135,17 @@ def parse_export(export_dir: str) -> list[ParsedNote]:
         raise FileNotFoundError(f"Export directory not found: {export_dir}")
 
     notes: list[ParsedNote] = []
+    ocr_cache: dict[Path, str] = {}
 
     for md_file in sorted(export_root.rglob("*.md")):
         raw = md_file.read_text(encoding="utf-8", errors="replace")
         content = clean_text(raw)
+        ocr_content, ocr_images, skipped_images = (
+            image_text(raw, md_file, export_root, ocr_cache)
+            if include_ocr else ("", 0, 0)
+        )
+        if ocr_content:
+            content = f"{content}\n\n{ocr_content}"
 
         # Skip near-empty files
         if len(content) < 50:
@@ -101,6 +160,8 @@ def parse_export(export_dir: str) -> list[ParsedNote]:
             course=course,
             source_path=source_path,
             content=content,
+            ocr_images=ocr_images,
+            skipped_images=skipped_images,
         ))
 
     print(f"Parsed {len(notes)} notes from {export_dir}")

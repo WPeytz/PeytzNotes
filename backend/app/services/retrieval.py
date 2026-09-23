@@ -48,7 +48,7 @@ async def search_chunks(
 
     # Build query with optional course filter
     where_clause = ""
-    params = {"embedding": embedding_str, "limit": limit}
+    params = {"embedding": embedding_str, "limit": limit, "query": query}
 
     if course:
         where_clause = "AND n.course = :course"
@@ -68,7 +68,9 @@ async def search_chunks(
         JOIN notes n ON c.note_id = n.id
         WHERE n.is_public = TRUE
         {where_clause}
-        ORDER BY c.embedding <=> :embedding
+        -- Prefer an exact phrase hit (including OCR text) before semantic matches.
+        ORDER BY (position(lower(:query) in lower(c.text)) > 0) DESC,
+                 c.embedding <=> :embedding
         LIMIT :limit
     """).bindparams(bindparam("embedding", type_=VectorType()))
 
